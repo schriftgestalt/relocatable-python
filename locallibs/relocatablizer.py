@@ -111,12 +111,19 @@ def get_rpaths(some_file):
     return rpaths
 
 
-def add_rpath(some_file):
-    """adds an rpath to the file"""
+def add_rpath(some_file, anchor="@executable_path"):
+    """adds an rpath (relative to the framework dir) to the file.
+
+    anchor is @executable_path for executables (resolves relative to the
+    process's main executable) or @loader_path for dylibs/.so bundles (resolves
+    relative to the loading file itself). @loader_path is required so libraries
+    can find their siblings even when the framework is loaded by a foreign host
+    executable (e.g. embedded in another app) rather than launched via
+    bin/python3."""
     framework_loc = framework_dir(some_file)
     rpath = (
         os.path.join(
-            "@executable_path",
+            anchor,
             os.path.relpath(framework_loc, os.path.dirname(some_file)),
         )
         + "/"
@@ -267,6 +274,12 @@ def relocatablize(framework_path):
     # add rpaths to executables
     for item in framework_data["executables"]:
         add_rpath(item["path"])
+        files_changed.add(item["path"])
+    # add @loader_path-relative rpaths to dylibs and .so bundles so their
+    # @rpath dependencies resolve regardless of which executable loads them
+    # (e.g. when the framework is embedded in a foreign host app).
+    for item in framework_data["dylibs"] + framework_data["so_files"]:
+        add_rpath(item["path"], anchor="@loader_path")
         files_changed.add(item["path"])
 
     return files_changed
